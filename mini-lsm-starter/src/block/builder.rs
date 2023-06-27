@@ -35,12 +35,16 @@ impl BlockBuilder {
         if !self.data.is_empty() && current_size + incoming_size > self.max_block_size {
             return false;
         }
-        self.offsets.push(self.data.len().try_into().unwrap());
-        self.data.push(key.len().try_into().unwrap());
+
+        let key_len = (key.len() as u16).to_le_bytes();
+        self.data.extend_from_slice(&key_len);
         self.data.extend_from_slice(key);
-        self.data.push(value.len().try_into().unwrap());
+
+        let value_len = (value.len() as u16).to_le_bytes();
+        self.data.extend_from_slice(&value_len);
         self.data.extend_from_slice(value);
 
+        self.offsets.push(self.data.len() as u16);
         true
     }
 

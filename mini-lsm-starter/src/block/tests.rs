@@ -73,6 +73,9 @@ fn test_block_iterator() {
         for i in 0..num_of_keys() {
             let key = iter.key();
             let value = iter.value();
+            if key != key_of(i) {
+                let foo = "";
+            }
             assert_eq!(
                 key,
                 key_of(i),
