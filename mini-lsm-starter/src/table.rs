@@ -4,12 +4,13 @@
 mod builder;
 mod iterator;
 
+use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
 pub use builder::SsTableBuilder;
-use bytes::{Buf, Bytes};
+use bytes::{Buf, BufMut, Bytes};
 pub use iterator::SsTableIterator;
 
 use crate::block::Block;
@@ -30,13 +31,37 @@ impl BlockMeta {
         #[allow(clippy::ptr_arg)] // remove this allow after you finish
         buf: &mut Vec<u8>,
     ) {
-        unimplemented!()
+        for meta in block_meta {
+            // offset (u32) | key_len (u16) | first_key
+            let offset_bytes = (meta.offset as u32).to_be_bytes();
+            buf.extend_from_slice(&offset_bytes);
+
+            let key_len_bytes = (meta.first_key.len() as u16).to_be_bytes();
+            buf.extend_from_slice(&key_len_bytes);
+
+            buf.extend_from_slice(meta.first_key.as_ref());
+        }
     }
 
     /// Decode block meta from a buffer.
-    pub fn decode_block_meta(buf: impl Buf) -> Vec<BlockMeta> {
-        unimplemented!()
+    /// Each block meta:  // offset (u32) | key_len (u16) | first_key
+    pub fn decode_block_meta(mut buf: impl Buf) -> Vec<BlockMeta> {
+        let mut blocks = Vec::new();
+        while buf.has_remaining() {
+            let offset = buf.get_u32();
+            let key_len = buf.get_u16();
+            let key = buf.copy_to_bytes(key_len as usize);
+            blocks.push(BlockMeta {
+                offset: offset as usize,
+                first_key: key,
+            });
+        }
+        blocks
     }
+
+    // pub fn decode_block_meta(buf: impl Buf) -> Vec<BlockMeta> {
+    //     todo!()
+    // }
 }
 
 /// A file object.
@@ -53,11 +78,11 @@ impl FileObject {
 
     /// Create a new file object (day 2) and write the file to the disk (day 4).
     pub fn create(path: &Path, data: Vec<u8>) -> Result<Self> {
-        unimplemented!()
+        Ok(FileObject(Bytes::from(data)))
     }
 
     pub fn open(path: &Path) -> Result<Self> {
-        unimplemented!()
+        Self::create(path, vec![])
     }
 }
 
@@ -75,7 +100,14 @@ impl SsTable {
 
     /// Open SSTable from a file.
     pub fn open(id: usize, block_cache: Option<Arc<BlockCache>>, file: FileObject) -> Result<Self> {
-        unimplemented!()
+        let bytes = &file.0;
+        let (block_metas_bytes, block_meta_offset) = SsTableBuilder::decode(bytes);
+        let block_metas = BlockMeta::decode_block_meta(block_metas_bytes);
+        Ok(SsTable {
+            file,
+            block_metas,
+            block_meta_offset,
+        })
     }
 
     /// Read a block from the disk.
