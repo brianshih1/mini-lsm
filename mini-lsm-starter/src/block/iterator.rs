@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use bytes::Bytes;
+
 use super::Block;
 
 /// Iterates on a block.
@@ -29,6 +31,9 @@ impl BlockIterator {
         let block_data = &block.data;
         let (_, key, _, value) = Self::get_key_and_value(block.clone(), 0);
 
+        let key_bytes = Bytes::copy_from_slice(&key);
+
+        println!("Created iterator with key: {key_bytes:?}");
         BlockIterator {
             block: block.clone(),
             key,
@@ -39,6 +44,9 @@ impl BlockIterator {
 
     // Given an offset, returns (key_size, key) OR (value_len, next_offset, value, next_offset)
     fn get_len_and_slice(block: Arc<Block>, offset: u16) -> (u16, Vec<u8>, u16) {
+        if offset == 108 {
+            let foo = "";
+        }
         let offset = offset as usize;
         let block_data = &block.data;
 
@@ -88,9 +96,13 @@ impl BlockIterator {
         self.value = value;
     }
 
+    pub fn size(&self) -> usize {
+        self.block.data.len()
+    }
+
     /// Move to the next key in the block.
     pub fn next(&mut self) {
-        if self.idx < self.block.offsets.len() {
+        if self.idx + 1 < self.block.offsets.len() {
             let offset = self.block.offsets[self.idx];
             let (_, key, _, value) = Self::get_key_and_value(self.block.clone(), offset);
             self.idx += 1;
@@ -106,9 +118,11 @@ impl BlockIterator {
     pub fn seek_to_key(&mut self, key: &[u8]) {
         self.seek_to_first();
         while self.is_valid() && self.key.as_slice() < key {
+            let bytes = Bytes::copy_from_slice(&self.key);
             self.next();
+            let is_valid = self.is_valid();
         }
-        if self.key.as_slice() > key {
+        if self.key.as_slice() < key {
             self.key.clear();
             self.value.clear();
         }

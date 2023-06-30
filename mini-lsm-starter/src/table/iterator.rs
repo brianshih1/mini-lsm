@@ -69,6 +69,7 @@ impl SsTableIterator {
         self.advance_to_block(block_idx);
         self.block_it.seek_to_key(key);
         if !self.block_it.is_valid() {
+            println!("Block is invalid");
             self.advance_to_block(block_idx + 1);
             self.block_it.seek_to_key(key);
         }
