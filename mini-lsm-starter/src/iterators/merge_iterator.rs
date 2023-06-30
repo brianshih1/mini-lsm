@@ -4,7 +4,8 @@
 use std::cmp::{self};
 use std::collections::BinaryHeap;
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
+use bytes::Bytes;
 
 use super::StorageIterator;
 
@@ -39,29 +40,81 @@ impl<I: StorageIterator> Ord for HeapWrapper<I> {
 /// iterators, perfer the one with smaller index.
 pub struct MergeIterator<I: StorageIterator> {
     iters: BinaryHeap<HeapWrapper<I>>,
-    current: HeapWrapper<I>,
+    current: Option<HeapWrapper<I>>,
 }
 
 impl<I: StorageIterator> MergeIterator<I> {
     pub fn create(iters: Vec<Box<I>>) -> Self {
-        unimplemented!()
+        let mut heap = BinaryHeap::new();
+        for (idx, it) in iters.into_iter().enumerate() {
+            if it.is_valid() {
+                heap.push(HeapWrapper(idx, it));
+            }
+        }
+        let first = heap.pop();
+        Self {
+            iters: heap,
+            current: first,
+        }
     }
 }
 
+impl<I: StorageIterator> MergeIterator<I> {}
+
 impl<I: StorageIterator> StorageIterator for MergeIterator<I> {
     fn key(&self) -> &[u8] {
-        unimplemented!()
+        unsafe { self.current.as_ref().unwrap_unchecked() }.1.key()
     }
 
     fn value(&self) -> &[u8] {
-        unimplemented!()
+        unsafe { self.current.as_ref().unwrap_unchecked() }
+            .1
+            .value()
     }
 
     fn is_valid(&self) -> bool {
-        unimplemented!()
+        if let Some(current) = &self.current {
+            if current.1.is_valid() {
+                return true;
+            }
+        }
+        self.iters.len() > 0
     }
 
     fn next(&mut self) -> Result<()> {
-        unimplemented!()
+        let current = Bytes::copy_from_slice(self.key());
+
+        unsafe {
+            self.current.as_mut().unwrap_unchecked().1.next();
+        }
+
+        let is_valid = unsafe { self.current.as_ref().unwrap_unchecked().1.is_valid() };
+        if is_valid {
+            println!("Peeking");
+            if let Some(it) = self.iters.peek() {
+                if it > &self.current.as_ref().unwrap() {
+                    println!("peeked iterator is greater than");
+                    let it = self.iters.pop().unwrap();
+                    let original_it = std::mem::replace(&mut self.current, Some(it));
+                    self.iters.push(original_it.unwrap());
+                } else {
+                    println!("Current iterator is greater than");
+                }
+            } else {
+                println!("Nothing to peek");
+            }
+        } else {
+            println!("Current iterator is not valid");
+            if !self.iters.is_empty() {
+                let popped = self.iters.pop().unwrap();
+                std::mem::replace(&mut self.current, Some(popped));
+            } else {
+                println!("StorageIterator is now invalid!")
+            }
+        }
+        if self.is_valid() && self.key() == current {
+            self.next();
+        }
+        Ok(())
     }
 }
