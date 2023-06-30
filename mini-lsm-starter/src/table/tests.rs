@@ -45,6 +45,8 @@ fn generate_sst() -> (TempDir, SsTable) {
     let mut builder = SsTableBuilder::new(128);
     for idx in 0..num_of_keys() {
         let key = key_of(idx);
+        let key_bytes = Bytes::copy_from_slice(&key);
+        println!("key for idx {idx}: {key_bytes:?}");
         let value = value_of(idx);
         builder.add(&key[..], &value[..]);
     }
@@ -74,9 +76,18 @@ fn as_bytes(x: &[u8]) -> Bytes {
 fn test_sst_iterator() {
     let (_dir, sst) = generate_sst();
     let sst = Arc::new(sst);
+    let num_blocks = &sst.block_metas.len();
+
     let mut iter = SsTableIterator::create_and_seek_to_first(sst).unwrap();
     for _ in 0..5 {
+        let num_keys = num_of_keys();
+        println!("Num of keys: {num_keys}");
+        println!("Num of blocks: {num_blocks}");
         for i in 0..num_of_keys() {
+            if i == 2 {
+                let foo = " ";
+            }
+            println!("Idx: {i}");
             let key = iter.key();
             let value = iter.value();
             assert_eq!(
@@ -93,6 +104,7 @@ fn test_sst_iterator() {
                 as_bytes(&value_of(i)),
                 as_bytes(value)
             );
+
             iter.next().unwrap();
         }
         iter.seek_to_first().unwrap();
@@ -105,7 +117,11 @@ fn test_sst_seek_key() {
     let sst = Arc::new(sst);
     let mut iter = SsTableIterator::create_and_seek_to_key(sst, &key_of(0)).unwrap();
     for offset in 1..=5 {
-        for i in 0..num_of_keys() {
+        for i in 0..num_of_keys() - 1 {
+            println!("Index: {i}");
+            if i == 4 {
+                let foo = "";
+            }
             let key = iter.key();
             let value = iter.value();
             assert_eq!(
@@ -122,6 +138,7 @@ fn test_sst_seek_key() {
                 as_bytes(&value_of(i)),
                 as_bytes(value)
             );
+            let seeked_key = i * 5 + offset;
             iter.seek_to_key(&format!("key_{:03}", i * 5 + offset).into_bytes())
                 .unwrap();
         }

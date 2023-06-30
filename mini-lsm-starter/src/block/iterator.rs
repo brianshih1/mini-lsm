@@ -27,7 +27,6 @@ impl BlockIterator {
     pub fn create_and_seek_to_first(block: Arc<Block>) -> Self {
         // | key_len (2B) | key (keylen) | value_len (2B) | value (varlen) |
         let block_data = &block.data;
-        let foo = block.offsets.len();
         let (_, key, _, value) = Self::get_key_and_value(block.clone(), 0);
 
         BlockIterator {
@@ -77,8 +76,7 @@ impl BlockIterator {
 
     /// Returns true if the iterator is valid.
     pub fn is_valid(&self) -> bool {
-        let offset_len = self.block.offsets.len();
-        self.idx + 1 < offset_len
+        !self.key.is_empty()
     }
 
     /// Seeks to the first key in the block.
@@ -92,15 +90,16 @@ impl BlockIterator {
 
     /// Move to the next key in the block.
     pub fn next(&mut self) {
-        if !self.is_valid() {
-            self.key = vec![];
-            return;
+        if self.idx < self.block.offsets.len() {
+            let offset = self.block.offsets[self.idx];
+            let (_, key, _, value) = Self::get_key_and_value(self.block.clone(), offset);
+            self.idx += 1;
+            self.key = key;
+            self.value = value;
+        } else {
+            self.key.clear();
+            self.value.clear();
         }
-        let offset = self.block.offsets[self.idx];
-        let (_, key, _, value) = Self::get_key_and_value(self.block.clone(), offset);
-        self.idx += 1;
-        self.key = key;
-        self.value = value;
     }
 
     /// Seek to the first key that >= `key`.
@@ -108,6 +107,10 @@ impl BlockIterator {
         self.seek_to_first();
         while self.is_valid() && self.key.as_slice() < key {
             self.next();
+        }
+        if self.key.as_slice() > key {
+            self.key.clear();
+            self.value.clear();
         }
     }
 }

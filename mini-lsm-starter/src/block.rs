@@ -38,7 +38,10 @@ impl Block {
 
     pub fn decode(data: &[u8]) -> Self {
         let length = data.len();
-        let num_elements = u16::from_le_bytes([data[data.len() - 2], data[data.len() - 1]]);
+        if length == 0 {
+            let foo = "";
+        }
+        let num_elements = u16::from_le_bytes([data[length - 2], data[length - 1]]);
         let offset_index_start = data.len() - 2 - num_elements as usize * 2;
         let offset_index_end = data.len() - 2;
         let offsets = &data[offset_index_start..offset_index_end];

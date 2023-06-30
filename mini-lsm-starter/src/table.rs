@@ -58,13 +58,10 @@ impl BlockMeta {
         }
         blocks
     }
-
-    // pub fn decode_block_meta(buf: impl Buf) -> Vec<BlockMeta> {
-    //     todo!()
-    // }
 }
 
 /// A file object.
+/// Bytes containing whole things, including data, meta, meta_offset
 pub struct FileObject(Bytes);
 
 impl FileObject {
@@ -89,6 +86,9 @@ impl FileObject {
 pub struct SsTable {
     file: FileObject,
     block_metas: Vec<BlockMeta>,
+    // the encoding looks like:
+    // data block | data block | meta block | meta block offset (u32)
+    // block_meta_offset point to the offset to the start of meta block.
     block_meta_offset: usize,
 }
 
@@ -112,7 +112,20 @@ impl SsTable {
 
     /// Read a block from the disk.
     pub fn read_block(&self, block_idx: usize) -> Result<Arc<Block>> {
-        unimplemented!()
+        let start_offset = *&self.block_metas[block_idx].offset;
+        let end_offset = if self.num_of_blocks() == block_idx + 1 {
+            let fo = self.file.size() as usize;
+            self.block_meta_offset
+        } else {
+            self.block_metas[block_idx + 1].offset
+        };
+        println!("Reading block - start_offset: {start_offset}, end_offset: {end_offset}");
+        let block_bytes = self
+            .file
+            .read(start_offset as u64, (end_offset - start_offset) as u64)
+            .unwrap();
+        let buf = &self.file.0[start_offset..end_offset];
+        Ok(Arc::new(Block::decode(&buf)))
     }
 
     /// Read a block from disk, with block cache. (Day 4)
@@ -120,14 +133,37 @@ impl SsTable {
         unimplemented!()
     }
 
-    /// Find the block that may contain `key`.
+    /// Find the block that may contain `key`. Returns index of block.
+    /// Returns the first block where the first_key <= key_to_find.
+    /// In other words, if the key is greater than all elements in all blocks,
+    /// then the index of the last block is returned.
     pub fn find_block_idx(&self, key: &[u8]) -> usize {
-        unimplemented!()
+        // left is candidate
+        let mut left = 0;
+        let mut right = self.num_of_blocks() - 1;
+        let key_bytes = Bytes::copy_from_slice(key);
+        println!("Key is: {key_bytes:?}");
+        // Invariant, the [left, right] contains all possible solutions
+        while left < right {
+            let mid = left + (right - left) / 2;
+            println!("Mid is: {mid}");
+            let foo = &self.block_metas[mid];
+            println!("Mid key: {foo:?}");
+            let mid_key: &[u8] = &self.block_metas[mid].first_key;
+            if mid_key >= key {
+                println!("mid_key is ge");
+                right = mid;
+            } else if mid_key < key {
+                println!("mid_key is less than");
+                left = mid + 1;
+            }
+        }
+        left
     }
 
     /// Get number of data blocks.
     pub fn num_of_blocks(&self) -> usize {
-        unimplemented!()
+        self.block_metas.len()
     }
 }
 
