@@ -12,6 +12,10 @@ fn check_iter_result(iter: impl StorageIterator, expected: Vec<(Bytes, Bytes)>) 
     assert!(!iter.is_valid());
 }
 
+fn as_bytes(x: &[u8]) -> Bytes {
+    Bytes::copy_from_slice(x)
+}
+
 #[test]
 fn test_merge_1() {
     let i1 = MockIterator::new(vec![
@@ -25,7 +29,17 @@ fn test_merge_1() {
         (Bytes::from("c"), Bytes::from("3.2")),
         (Bytes::from("d"), Bytes::from("4.2")),
     ]);
-    let iter = TwoMergeIterator::create(i1, i2).unwrap();
+    let mut iter = TwoMergeIterator::create(i1, i2).unwrap();
+
+    // while iter.is_valid() {
+    //     println!(
+    //         "Key is: {:?}. Value is: {:?}",
+    //         as_bytes(iter.key()),
+    //         as_bytes(iter.value())
+    //     );
+    //     iter.next();
+    // }
+
     check_iter_result(
         iter,
         vec![
@@ -74,7 +88,17 @@ fn test_merge_3() {
         (Bytes::from("c"), Bytes::from("3.2")),
         (Bytes::from("d"), Bytes::from("4.2")),
     ]);
-    let iter = TwoMergeIterator::create(i1, i2).unwrap();
+    let mut iter = TwoMergeIterator::create(i1, i2).unwrap();
+
+    // while iter.is_valid() {
+    //     let key = iter.key();
+    //     println!(
+    //         "Key is: {:?}. Value is {:?}",
+    //         Bytes::copy_from_slice(key),
+    //         Bytes::copy_from_slice(iter.value())
+    //     );
+    //     iter.next();
+    // }
     check_iter_result(
         iter,
         vec![
