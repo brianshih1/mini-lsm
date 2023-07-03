@@ -1,11 +1,12 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
+use core::result::Result::Ok;
 use std::ops::{Bound, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use anyhow::{Ok, Result};
+use anyhow::Result;
 use bytes::Bytes;
 use parking_lot::RwLock;
 
@@ -66,7 +67,6 @@ impl LsmStorage {
     pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
         let inner = self.inner.read().clone(); // drops the read_lock
 
-        let mut tombstone_found = false;
         let res = inner.memtable.get(key);
         if let Some(res) = res {
             if !res.is_empty() {
@@ -169,26 +169,62 @@ impl LsmStorage {
         lower: Bound<&[u8]>,
         upper: Bound<&[u8]>,
     ) -> Result<FusedIterator<LsmIterator>> {
-        // let inner = self.inner.read().clone(); // drops the read_lock
-        // let mem_table_it = inner.memtable.scan(lower, upper);
-        // let mem_iters = inner
-        //     .imm_memtables
-        //     .iter()
-        //     .rev()
-        //     .map(|memtable| Box::new(memtable.scan(lower, upper)))
-        //     .collect::<Vec<Box<MemTableIterator>>>();
-        // let mut its = vec![Box::new(mem_table_it)];
-        // its.extend(mem_iters);
+        let inner = self.inner.read().clone(); // drops the read_lock
+        let mem_table_it = inner.memtable.scan(lower, upper);
+        let mem_iters = inner
+            .imm_memtables
+            .iter()
+            .rev()
+            .map(|memtable| Box::new(memtable.scan(lower, upper)))
+            .collect::<Vec<Box<MemTableIterator>>>();
+        let mut its = vec![Box::new(mem_table_it)];
+        its.extend(mem_iters);
 
-        // let merged_it = MergeIterator::create(its);
-        // let sstable_iters: Vec<Box<SsTableIterator>> = inner
-        //     .l0_sstables
-        //     .iter()
-        //     .map(|sstable| {
-        //         Box::new(SsTableIterator::create_and_seek_to_key(sstable.clone(), key).unwrap())
-        //     })
-        //     .collect();
-        // let sstable_it = MergeIterator::create(sstable_iters);
-        todo!()
+        let merged_it = MergeIterator::create(its);
+        let mut sstable_iters = Vec::with_capacity(inner.l0_sstables.len());
+        for sstable in inner.l0_sstables.iter().rev() {
+            let it = match lower {
+                Bound::Included(key) => {
+                    let it = SsTableIterator::create_and_seek_to_key(sstable.clone(), key);
+                    match it {
+                        Ok(it) => Some(it),
+                        Err(_) => None,
+                    }
+                }
+                Bound::Excluded(key) => {
+                    let it = SsTableIterator::create_and_seek_to_key(sstable.clone(), key);
+                    match it {
+                        Ok(mut it) => {
+                            if it.key() == key {
+                                it.next()?;
+                            }
+                            Some(it)
+                        }
+                        Err(_) => None,
+                    }
+                }
+                Bound::Unbounded => {
+                    Some(SsTableIterator::create_and_seek_to_first(sstable.clone()).unwrap())
+                }
+            };
+            if let Some(it) = it {
+                sstable_iters.push(Box::new(it));
+            }
+        }
+        let sstable_it = MergeIterator::create(sstable_iters);
+
+        let merged_it = TwoMergeIterator::create(merged_it, sstable_it).unwrap();
+        Ok(FusedIterator::new(LsmIterator::create(
+            convert_bound(upper),
+            merged_it,
+        )))
+    }
+}
+
+fn convert_bound(bound: Bound<&[u8]>) -> Bound<Bytes> {
+    match bound {
+        Bound::Included(slice) => Bound::Included(Bytes::copy_from_slice(slice)),
+        Bound::Excluded(slice) => Bound::Excluded(Bytes::copy_from_slice(slice)),
+        Bound::Unbounded => Bound::Unbounded,
     }
 }

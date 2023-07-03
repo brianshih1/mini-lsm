@@ -56,6 +56,16 @@ fn test_storage_scan_memtable_1() {
     storage.put(b"2", b"2333").unwrap();
     storage.put(b"3", b"23333").unwrap();
     storage.delete(b"2").unwrap();
+
+    // let mut scanner = storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
+    // while scanner.is_valid() {
+    //     println!(
+    //         "Key is: {:?}, Value is: {:?}",
+    //         as_bytes(scanner.key()),
+    //         as_bytes(scanner.value())
+    //     );
+    //     scanner.next();
+    // }
     check_iter_result(
         storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap(),
         vec![
